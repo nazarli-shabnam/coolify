@@ -233,6 +233,10 @@ class DeployController extends Controller
             return response()->json(['message' => 'You do not have permission to cancel this deployment.'], 403);
         }
 
+        if ($deployment->application) {
+            $this->authorize('deploy', $deployment->application);
+        }
+
         // Check if deployment can be cancelled (must be queued or in_progress)
         $cancellableStatuses = [
             ApplicationDeploymentStatus::QUEUED->value,

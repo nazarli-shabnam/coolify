@@ -82,6 +82,32 @@ describe('POST /api/v1/deployments/{uuid}/cancel', function () {
         $response->assertJson(['message' => 'You do not have permission to cancel this deployment.']);
     });
 
+    test('returns 403 and keeps the deployment running when its application belongs to another team', function () {
+        $otherTeam = Team::factory()->create();
+        $otherProject = Project::factory()->create(['team_id' => $otherTeam->id]);
+        $otherEnvironment = Environment::factory()->create(['project_id' => $otherProject->id]);
+        $destination = StandaloneDocker::where('server_id', $this->server->id)->firstOrFail();
+        $application = Application::factory()->create([
+            'environment_id' => $otherEnvironment->id,
+            'destination_id' => $destination->id,
+            'destination_type' => $destination->getMorphClass(),
+        ]);
+        $deployment = ApplicationDeploymentQueue::create([
+            'deployment_uuid' => 'foreign-application-deployment-uuid',
+            'application_id' => $application->id,
+            'server_id' => $this->server->id,
+            'status' => ApplicationDeploymentStatus::IN_PROGRESS->value,
+        ]);
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer '.$this->bearerToken,
+            'Content-Type' => 'application/json',
+        ])->postJson("/api/v1/deployments/{$deployment->deployment_uuid}/cancel");
+
+        $response->assertStatus(403);
+        expect($deployment->fresh()->status)->toBe(ApplicationDeploymentStatus::IN_PROGRESS->value);
+    });
+
     test('returns 400 when deployment is already finished', function () {
         $deployment = ApplicationDeploymentQueue::create([
             'deployment_uuid' => 'finished-deployment-uuid',
